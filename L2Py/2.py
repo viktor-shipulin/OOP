@@ -1,5 +1,5 @@
 while True:
-    color = str(input('какой горит цвет?🚦 '))
+    color = str(input('какой горит цвет?'))
 
     if color  == 'красный':
         print(f'Сейчас горит - {color} STOP')

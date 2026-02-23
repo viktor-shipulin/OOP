@@ -2,6 +2,8 @@ from aiogram import Router, types, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, FSInputFile
 from core.quiz import Quiz
+from core.database import Database
+from core.todo import todo
 
 class BotHandlers:
     def __init__(self, bot: Bot):
@@ -10,11 +12,25 @@ class BotHandlers:
         self.user_data = {}
         self.bot = bot
         self.register_handlers()
+        self.db = Database()
+        self.todo = todo(self.db)
+
 
     def register_handlers(self):
         self.router.message.register(self.start_command, Command("start"))
         self.router.message.register(self.quiz_start, Command("quiz"))
         self.router.callback_query.register(self.handle_answer)
+    
+    async  def add_todo(self, message: types.Message):
+        text = message.text.replace("/add ", "").strip()
+        
+        if not text:
+            await message.answer("! используй /add для текста задачи")
+            return
+        self.todo.add(message.from_user.id, text)
+        await message.answer("Задача добавлена!")
+
+
 
     async def start_command(self, message: types.Message):
         await message.answer("Привет! Викторина из 15 вопросов готова.\nНапиши /quiz для начала!")

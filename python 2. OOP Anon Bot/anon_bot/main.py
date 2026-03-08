@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import logging
+from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -12,23 +13,18 @@ from aiogram.types import (
 )
 from anonDB import UserDB
 
-# НАСТРОЙКА ЛОГОВ
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
-# ЗАГРУЗКА ПАРАМЕТРОВ (Конфиг или Переменные окружения)
 try:
     from config import TOKEN, GROUP_ID, ADMIN_ID
-    logging.info("Данные загружены из config.py")
 except ImportError:
     TOKEN = os.getenv("TOKEN")
     ADMIN_ID = os.getenv("ADMIN_ID")
     GROUP_ID = os.getenv("GROUP_ID")
     if ADMIN_ID: ADMIN_ID = int(ADMIN_ID)
     if GROUP_ID: GROUP_ID = int(GROUP_ID)
-    logging.info("Данные загружены из Environment Variables")
 
 if not TOKEN:
-    logging.error("TOKEN не найден! Бот остановлен.")
     sys.exit(1)
 
 bot = Bot(token=TOKEN)
@@ -38,7 +34,6 @@ db = UserDB()
 class RegStates(StatesGroup):
     waiting_for_nickname = State()
 
-# КЛАВИАТУРЫ
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -66,7 +61,6 @@ def get_ban_time_keyboard(user_id):
         [InlineKeyboardButton(text="🔙 Отмена", callback_data=f"cancelban_{user_id}")]
     ])
 
-# ХЕНДЛЕРЫ
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     ban_status = db.is_banned(message.from_user.id)
@@ -112,7 +106,6 @@ async def handle_to_moderator(message: types.Message):
     except Exception as e:
         logging.error(f"Ошибка отправки админу: {e}")
 
-# МОДЕРАЦИЯ (CALLBACKS)
 @dp.callback_query(F.data.startswith("approve_"))
 async def approve_handler(callback: CallbackQuery):
     user_id = callback.data.split("_")[1]
@@ -149,7 +142,6 @@ async def ban_apply(callback: CallbackQuery):
     _, uid, dur = callback.data.split("_")
     days = None if dur == "forever" else int(dur)
     label = "навсегда" if days is None else f"на {days} дн."
-    
     db.add_to_blacklist(uid, days)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(f"🚫 Пользователь {uid} забанен {label}.")
@@ -162,3 +154,25 @@ async def ban_apply(callback: CallbackQuery):
 async def cancel_ban(callback: CallbackQuery):
     uid = callback.data.split("_")[1]
     await callback.message.edit_reply_markup(reply_markup=get_moderation_keyboard(uid))
+    await callback.answer()
+
+async def handle(request):
+    return web.Response(text="Bot is alive")
+
+async def start_bot():
+    await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(dp.start_polling(bot))
+
+async def run_app():
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.getenv("PORT", 10000)))
+    await start_bot()
+    await site.start()
+    while True:
+        await asyncio.sleep(3600)
+
+if __name__ == "__main__":
+    asyncio.run(run_app())
